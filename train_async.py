@@ -24,12 +24,15 @@ def train(args):
 
     # create the actor and critic models
     actor_model, critic_model = create_training_models(args, pgs, rollout_manager)
+    policy_version = 0
 
     # Always push actor weights to rollout once weights are loaded.
-    actor_model.update_weights()
+    if not args.critic_train_only:
+        actor_model.update_weights()
+        ray.get(rollout_manager.after_weight_update.remote(policy_version))
 
-    if args.check_weight_update_equal:
-        ray.get(rollout_manager.check_weights.remote(action="compare"))
+        if args.check_weight_update_equal:
+            ray.get(rollout_manager.check_weights.remote(action="compare"))
 
     # async train loop.
     rollout_data_next_future = rollout_manager.generate.remote(args.start_rollout_id)
@@ -70,7 +73,11 @@ def train(args):
             # sync generate before update weights to prevent update weight in the middle of generation
             rollout_data_curr_ref = ray.get(x) if (x := rollout_data_next_future) is not None else None
             rollout_data_next_future = None
-            actor_model.update_weights()
+            if not args.critic_train_only:
+                ray.get(rollout_manager.before_weight_update.remote(policy_version))
+                actor_model.update_weights()
+                policy_version += 1
+                ray.get(rollout_manager.after_weight_update.remote(policy_version))
 
         if should_run_periodic_action(rollout_id, args.eval_interval, num_rollout_per_epoch):
             ray.get(rollout_manager.eval.remote(rollout_id))

@@ -440,7 +440,30 @@ class RolloutManager:
             except Exception as e:
                 logger.warning(f"CI Fault Injection failed: {e}")
 
+    def _call_generate_rollout_hook(self, hook_name: str, **kwargs):
+        hook = getattr(self.generate_rollout_module, hook_name, None)
+        if hook is None:
+            return None
+        return hook(self.args, self.data_source, **kwargs)
+
+    def before_weight_update(self, policy_version: int):
+        for key, value in {"current_policy_version": policy_version}.items():
+            setattr(self.args, key, value)
+        return self._call_generate_rollout_hook("before_weight_update", policy_version=policy_version)
+
+    def after_weight_update(self, policy_version: int):
+        for key, value in {"current_policy_version": policy_version}.items():
+            setattr(self.args, key, value)
+        result = self._call_generate_rollout_hook("after_weight_update", policy_version=policy_version)
+        if result:
+            async_metrics = {k: v for k, v in result.items() if k.startswith("fully_async/")}
+            if async_metrics:
+                logging_utils.log(self.args, async_metrics, step_key="fully_async/step")
+        return result
+
     def dispose(self):
+        self._call_generate_rollout_hook("flush_metrics")
+        self._call_generate_rollout_hook("shutdown_worker")
         for monitor in self._health_monitors:
             monitor.stop()
         logging_utils.finish_tracking(self.args)
