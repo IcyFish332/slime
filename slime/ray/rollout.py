@@ -441,7 +441,12 @@ class RolloutManager:
                 logger.warning(f"CI Fault Injection failed: {e}")
 
     def _call_generate_rollout_hook(self, hook_name: str, **kwargs):
-        hook = getattr(self.generate_rollout_module, hook_name, None)
+        import sys
+        mod_name = getattr(self.generate_rollout, "__module__", None)
+        mod = sys.modules.get(mod_name) if mod_name else None
+        if mod is None:
+            return None
+        hook = getattr(mod, hook_name, None)
         if hook is None:
             return None
         return hook(self.args, self.data_source, **kwargs)
