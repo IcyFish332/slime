@@ -27,7 +27,7 @@ def train(args):
     policy_version = 0
 
     # Always push actor weights to rollout once weights are loaded.
-    if not args.critic_train_only:
+    if not getattr(args, "critic_train_only", False):
         actor_model.update_weights()
         ray.get(rollout_manager.after_weight_update.remote(policy_version))
 
@@ -73,7 +73,7 @@ def train(args):
             # sync generate before update weights to prevent update weight in the middle of generation
             rollout_data_curr_ref = ray.get(x) if (x := rollout_data_next_future) is not None else None
             rollout_data_next_future = None
-            if not args.critic_train_only:
+            if not getattr(args, "critic_train_only", False):
                 ray.get(rollout_manager.before_weight_update.remote(policy_version))
                 actor_model.update_weights()
                 policy_version += 1
