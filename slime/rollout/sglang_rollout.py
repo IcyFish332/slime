@@ -327,7 +327,6 @@ async def generate_and_rm_group(
         if sample.session_id is None:
             sample.session_id = str(uuid.uuid4())
 
-    original_group = list(group)
     tasks = []
     for idx, sample in enumerate(group):
         current_sampling_params = sampling_params.copy()
@@ -338,17 +337,7 @@ async def generate_and_rm_group(
             asyncio.create_task(generate_and_rm(args, sample, current_sampling_params, evaluation=evaluation))
         )
 
-    results = await asyncio.gather(*tasks, return_exceptions=True)
-
-    group = []
-    for result, fallback in zip(results, original_group):
-        if isinstance(result, BaseException):
-            logger.warning("Task for sample %s raised %s, using fallback", getattr(fallback, 'index', '?'), result)
-            fallback.status = Sample.Status.COMPLETED
-            fallback.remove_sample = True
-            group.append(fallback)
-        else:
-            group.append(result)
+    group = await asyncio.gather(*tasks)
 
     # for the rm that need the whole group, we will do the rm here
     if not state.aborted and args.group_rm:
